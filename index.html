@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flight upgrade tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #ffffff; --bg2: #f5f4f0; --bg3: #eeede8;
+    --text: #1a1a18; --text2: #5f5e5a; --text3: #888780;
+    --border: rgba(0,0,0,0.12); --border2: rgba(0,0,0,0.22);
+    --radius: 8px; --radius-lg: 12px;
+    --blue: #378ADD; --coral: #D85A30; --teal: #1D9E75; --purple: #7F77DD;
+    --green-bg: #EAF3DE; --green-text: #27500A;
+    --amber-bg: #FAEEDA; --amber-text: #633806;
+    --red-bg: #FCEBEB; --red-text: #791F1F;
+    --info-bg: #E6F1FB; --info-text: #0C447C;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1e1e1c; --bg2: #2a2a28; --bg3: #333331;
+      --text: #e8e6de; --text2: #b4b2a9; --text3: #73726c;
+      --border: rgba(255,255,255,0.1); --border2: rgba(255,255,255,0.2);
+      --green-bg: #173404; --green-text: #C0DD97;
+      --amber-bg: #412402; --amber-text: #FAC775;
+      --red-bg: #501313; --red-text: #F7C1C1;
+      --info-bg: #042C53; --info-text: #B5D4F4;
+    }
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg3); color: var(--text); font-size: 15px; line-height: 1.6; min-height: 100vh; }
+  .page { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+  h1 { font-size: 20px; font-weight: 500; margin-bottom: 0.25rem; }
+  .subtitle { font-size: 13px; color: var(--text3); margin-bottom: 1.5rem; }
+
+  .flight-tabs { display: flex; gap: 0; margin-bottom: 1.5rem; border-bottom: 0.5px solid var(--border2); }
+  .flight-tab { padding: 10px 24px; font-size: 14px; font-weight: 500; cursor: pointer; border: none; background: none; color: var(--text3); border-bottom: 2px solid transparent; margin-bottom: -0.5px; transition: color 0.15s, border-color 0.15s; display: flex; align-items: center; gap: 8px; }
+  .flight-tab:hover { color: var(--text2); }
+  .flight-tab.active { color: var(--text); border-bottom-color: var(--text); }
+  .tab-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text3); display: inline-block; transition: background 0.2s; }
+  .tab-dot.due { background: #E24B4A; }
+  .tab-dot.ok { background: #639922; }
+  .flight-pane { display: none; }
+  .flight-pane.active { display: block; }
+
+  .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 1.5rem; }
+  @media (max-width: 700px) { .grid-5 { grid-template-columns: repeat(3,1fr); } .field-row { grid-template-columns: 1fr 1fr !important; } .field-row-3 { grid-template-columns: 1fr 1fr !important; } .cadence-grid { grid-template-columns: 1fr !important; } }
+  .metric { background: var(--bg2); border-radius: var(--radius); padding: 14px 16px; }
+  .metric-label { font-size: 11px; color: var(--text3); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .metric-value { font-size: 22px; font-weight: 500; }
+
+  .card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1rem; }
+  .card-title { font-size: 11px; font-weight: 500; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 1rem; }
+  .field-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; align-items: end; }
+  .field-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; align-items: end; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  label { font-size: 12px; color: var(--text2); }
+  input[type=text], input[type=number], input[type=date] {
+    background: var(--bg2); border: 0.5px solid var(--border2); border-radius: var(--radius);
+    color: var(--text); font-size: 13px; padding: 7px 10px; width: 100%; outline: none; transition: border-color 0.15s;
+  }
+  input:focus { border-color: var(--blue); }
+  .btn { background: var(--text); color: var(--bg); border: none; padding: 8px 18px; border-radius: var(--radius); font-size: 13px; cursor: pointer; font-weight: 500; transition: opacity 0.15s; }
+  .btn:hover { opacity: 0.82; }
+  .btn-outline { background: transparent; color: var(--text2); border: 0.5px solid var(--border2); padding: 7px 16px; border-radius: var(--radius); font-size: 13px; cursor: pointer; transition: background 0.15s; }
+  .btn-outline:hover { background: var(--bg2); }
+  .btn-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; font-weight: 500; color: var(--text3); border-bottom: 0.5px solid var(--border); padding: 6px 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td { padding: 7px 8px; border-bottom: 0.5px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  .del-btn { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 16px; padding: 0 4px; line-height: 1; }
+  .del-btn:hover { color: #E24B4A; }
+
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--text2); margin-bottom: 10px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-line { width: 18px; height: 0; }
+
+  .badge { display: inline-block; font-size: 11px; font-weight: 500; padding: 3px 9px; border-radius: 20px; }
+  .badge-green { background: var(--green-bg); color: var(--green-text); }
+  .badge-amber { background: var(--amber-bg); color: var(--amber-text); }
+  .badge-red { background: var(--red-bg); color: var(--red-text); }
+  .badge-info { background: var(--info-bg); color: var(--info-text); }
+
+  .proj-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin: 12px 0; }
+  .proj-cell { background: var(--bg2); border-radius: var(--radius); padding: 10px; text-align: center; }
+  .proj-cell-label { font-size: 11px; color: var(--text3); margin-bottom: 6px; }
+  .note { font-size: 11px; color: var(--text3); margin-top: 10px; font-style: italic; line-height: 1.5; }
+  .empty-msg { font-size: 13px; color: var(--text3); font-style: italic; padding: 8px 0; }
+  .signal-box { background: var(--bg2); border-radius: var(--radius); padding: 12px 16px; font-size: 13px; line-height: 1.7; color: var(--text2); }
+  .signal-box strong { color: var(--text); }
+
+  .cadence-card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1rem; }
+  .cadence-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+  .cadence-item { background: var(--bg2); border-radius: var(--radius); padding: 12px 14px; display: flex; align-items: flex-start; gap: 12px; }
+  .cadence-item.checked { opacity: 0.55; }
+  .cadence-checkbox { width: 18px; height: 18px; border: 1.5px solid var(--border2); border-radius: 4px; cursor: pointer; flex-shrink: 0; margin-top: 1px; display: flex; align-items: center; justify-content: center; background: var(--bg); transition: background 0.15s, border-color 0.15s; }
+  .cadence-checkbox.checked { background: var(--text); border-color: var(--text); }
+  .cadence-checkbox.checked::after { content: ''; display: block; width: 5px; height: 9px; border: 2px solid var(--bg); border-top: none; border-left: none; transform: rotate(45deg) translate(-1px, -1px); }
+  .cadence-label { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 2px; }
+  .cadence-desc { font-size: 11px; color: var(--text3); line-height: 1.4; }
+  .cadence-due { font-size: 11px; font-weight: 500; margin-top: 4px; }
+  .cadence-due.overdue { color: #A32D2D; }
+  .cadence-due.today { color: #3B6D11; }
+  .cadence-due.upcoming { color: var(--text3); }
+  .cadence-trigger { font-size: 11px; color: var(--info-text); background: var(--info-bg); padding: 2px 7px; border-radius: 10px; display: inline-block; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Flight upgrade tracker</h1>
+  <p class="subtitle">Track fare signals and upgrade pricing for both legs. Log on the recommended cadence — projection updates automatically.</p>
+
+  <div class="flight-tabs">
+    <button class="flight-tab active" onclick="switchTab(0)">
+      Outbound <span class="tab-dot" id="dot-0"></span>
+    </button>
+    <button class="flight-tab" onclick="switchTab(1)">
+      Return <span class="tab-dot" id="dot-1"></span>
+    </button>
+  </div>
+
+  <div id="pane-0" class="flight-pane active"></div>
+  <div id="pane-1" class="flight-pane"></div>
+</div>
+
+<script>
+const FLIGHTS = [
+  { id: 0, label: 'Outbound', color: '#378ADD', chartId: 'chart0' },
+  { id: 1, label: 'Return',   color: '#7F77DD', chartId: 'chart1' }
+];
+
+let state = [
+  { entries: [], depDate: '', flightLabel: '', totalBiz: '', checks: {} },
+  { entries: [], depDate: '', flightLabel: '', totalBiz: '', checks: {} }
+];
+let charts = [null, null];
+let activeTab = 0;
+
+try {
+  const saved = localStorage.getItem('flightTrackerV3');
+  if (saved) {
+    const p = JSON.parse(saved);
+    state = p.map(s => ({ checks: {}, ...s }));
+  }
+} catch(e) {}
+
+function save() {
+  try { localStorage.setItem('flightTrackerV3', JSON.stringify(state)); } catch(e) {}
+}
+
+function switchTab(idx) {
+  activeTab = idx;
+  document.querySelectorAll('.flight-tab').forEach((t,i) => t.classList.toggle('active', i === idx));
+  document.querySelectorAll('.flight-pane').forEach((p,i) => p.classList.toggle('active', i === idx));
+}
+
+function daysUntil(dateStr) {
+  if (!dateStr) return null;
+  return Math.round((new Date(dateStr + 'T12:00:00') - new Date()) / 864e5);
+}
+function daysOut(entryDate, depDate) {
+  if (!depDate || !entryDate) return null;
+  return Math.round((new Date(depDate + 'T12:00:00') - new Date(entryDate + 'T12:00:00')) / 864e5);
+}
+function todayStr() { return new Date().toISOString().split('T')[0]; }
+function addDays(str, n) {
+  const d = new Date(str + 'T12:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toISOString().split('T')[0];
+}
+
+function getCadence(fIdx) {
+  const s = state[fIdx];
+  const days = daysUntil(s.depDate);
+  const entries = s.entries;
+  const lastUpgradeEntry = [...entries].reverse().find(e => e.upgrade !== null);
+  const lastUpgradeChange = (() => {
+    const u = entries.filter(e => e.upgrade !== null);
+    if (u.length < 2) return 0;
+    return Math.abs(u[u.length-1].upgrade - u[u.length-2].upgrade);
+  })();
+  const seatsLeft = (() => {
+    const e = [...entries].reverse().find(x => x.bizSeats !== null);
+    return e ? e.bizSeats : null;
+  })();
+  const isReturn = fIdx === 1;
+
+  if (days === null) return [];
+
+  const items = [];
+  const today = todayStr();
+
+  if (days > 21) {
+    if (!isReturn) {
+      items.push({
+        id: 'departure-check',
+        label: 'Check upgrade offer',
+        desc: 'View offer via manage seats — no signal-sending click required.',
+        freq: 3,
+        trigger: null,
+        priority: 'normal'
+      });
+      items.push({
+        id: 'biz-fare-check',
+        label: 'Check full biz fare',
+        desc: 'Log on Expedia incognito to track divergence from upgrade offer.',
+        freq: 4,
+        trigger: null,
+        priority: 'normal'
+      });
+      items.push({
+        id: 'return-check',
+        label: 'Check return offer',
+        desc: 'Only worth checking if departure offer moves >$20 or seats drop.',
+        freq: null,
+        trigger: 'trigger-based only',
+        priority: 'low'
+      });
+    } else {
+      items.push({
+        id: 'return-upgrade',
+        label: 'Check return upgrade offer',
+        desc: 'Low urgency. Check only when outbound shows meaningful movement.',
+        freq: null,
+        trigger: 'trigger-based only',
+        priority: 'low'
+      });
+      items.push({
+        id: 'return-biz',
+        label: 'Check return full biz fare',
+        desc: 'Log incognito on Expedia alongside outbound check.',
+        freq: 5,
+        trigger: null,
+        priority: 'normal'
+      });
+    }
+  } else if (days > 10) {
+    items.push({
+      id: 'upgrade-check',
+      label: 'Check upgrade offer',
+      desc: 'Inside 3 weeks — price movement likely accelerating.',
+      freq: 2,
+      trigger: null,
+      priority: 'elevated'
+    });
+    items.push({
+      id: 'biz-fare-check',
+      label: 'Check full biz fare',
+      desc: 'Divergence signals strongest in this window.',
+      freq: 2,
+      trigger: null,
+      priority: 'elevated'
+    });
+    items.push({
+      id: 'seat-count',
+      label: 'Check seat availability',
+      desc: 'Depletion rate now predictive of offer window closing.',
+      freq: 2,
+      trigger: null,
+      priority: 'elevated'
+    });
+  } else if (days > 3) {
+    items.push({
+      id: 'upgrade-daily',
+      label: 'Check upgrade offer daily',
+      desc: 'Final discount window. Price likely at or near floor.',
+      freq: 1,
+      trigger: null,
+      priority: 'high'
+    });
+    items.push({
+      id: 'decide',
+      label: 'Make upgrade decision',
+      desc: 'Within 72hrs the offer may disappear or a gate deal may emerge.',
+      freq: null,
+      trigger: 'decide before 72hrs out',
+      priority: 'high'
+    });
+  } else {
+    items.push({
+      id: 'gate-check',
+      label: 'Ask at gate',
+      desc: 'Gate upgrade is often lowest available price. Ask proactively.',
+      freq: null,
+      trigger: 'day of departure',
+      priority: 'high'
+    });
+  }
+
+  if (lastUpgradeChange > 20) {
+    items.unshift({
+      id: 'movement-alert',
+      label: 'Recheck — price moved',
+      desc: `Last logged upgrade moved $${lastUpgradeChange}. Check again soon.`,
+      freq: 1,
+      trigger: 'price movement detected',
+      priority: 'high'
+    });
+  }
+
+  return items.map(item => {
+    const checks = s.checks[item.id] || [];
+    const lastCheck = checks.length > 0 ? checks[checks.length - 1] : null;
+    let dueDate = null;
+    let status = 'upcoming';
+    if (item.freq) {
+      dueDate = lastCheck ? addDays(lastCheck, item.freq) : today;
+      if (dueDate < today) status = 'overdue';
+      else if (dueDate === today) status = 'today';
+      else status = 'upcoming';
+    }
+    return { ...item, lastCheck, dueDate, status };
+  });
+}
+
+function checkOff(fIdx, itemId) {
+  if (!state[fIdx].checks[itemId]) state[fIdx].checks[itemId] = [];
+  state[fIdx].checks[itemId].push(todayStr());
+  save();
+  renderCadence(fIdx);
+  updateTabDots();
+}
+
+function updateTabDots() {
+  FLIGHTS.forEach(f => {
+    const cadence = getCadence(f.id);
+    const dot = document.getElementById('dot-' + f.id);
+    if (!dot) return;
+    const hasOverdue = cadence.some(c => c.status === 'overdue');
+    const hasToday = cadence.some(c => c.status === 'today');
+    dot.className = 'tab-dot' + (hasOverdue ? ' due' : hasToday ? ' ok' : '');
+  });
+}
+
+function buildPane(fIdx) {
+  const f = FLIGHTS[fIdx];
+  const pane = document.getElementById('pane-' + fIdx);
+  const today = todayStr();
+
+  pane.innerHTML = `
+    <div class="grid-5">
+      <div class="metric"><div class="metric-label">Days to departure</div><div class="metric-value" id="stat-days-${fIdx}">—</div></div>
+      <div class="metric"><div class="metric-label">Upgrade offer</div><div class="metric-value" id="stat-upgrade-${fIdx}">—</div></div>
+      <div class="metric"><div class="metric-label">Full biz fare</div><div class="metric-value" id="stat-bizfare-${fIdx}">—</div></div>
+      <div class="metric"><div class="metric-label">Biz seats avail.</div><div class="metric-value" id="stat-seats-${fIdx}">—</div></div>
+      <div class="metric"><div class="metric-label">Upgrade Δ total</div><div class="metric-value" id="stat-change-${fIdx}">—</div></div>
+    </div>
+
+    <div class="cadence-card">
+      <div class="card-title">Recommended check cadence</div>
+      <div id="cadence-${fIdx}"><p class="empty-msg">Set a departure date to see recommended check schedule.</p></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Flight setup</div>
+      <div class="field-row-3">
+        <div class="field"><label>Departure date</label><input type="date" id="dep-date-${fIdx}" value="${state[fIdx].depDate || ''}" onchange="onSetup(${fIdx})"></div>
+        <div class="field"><label>Flight / route</label><input type="text" id="flight-label-${fIdx}" value="${state[fIdx].flightLabel || ''}" placeholder="e.g. AA JFK-PUJ" onchange="onSetup(${fIdx})"></div>
+        <div class="field"><label>Total biz class seats</label><input type="number" id="total-biz-${fIdx}" value="${state[fIdx].totalBiz || ''}" placeholder="16" min="1" onchange="onSetup(${fIdx})"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Log today's data</div>
+      <div class="field-row">
+        <div class="field"><label>Date</label><input type="date" id="entry-date-${fIdx}" value="${today}"></div>
+        <div class="field"><label>Economy fare ($)</label><input type="number" id="entry-econ-${fIdx}" placeholder="289" min="0"></div>
+        <div class="field"><label>Full biz fare ($)</label><input type="number" id="entry-bizfare-${fIdx}" placeholder="980" min="0"></div>
+        <div class="field"><label>Biz seats avail.</label><input type="number" id="entry-biz-seats-${fIdx}" placeholder="12" min="0"></div>
+        <div class="field"><label>Upgrade offer ($)</label><input type="number" id="entry-upgrade-${fIdx}" placeholder="346" min="0"></div>
+        <div class="field"><label>Notes</label><input type="text" id="entry-notes-${fIdx}" placeholder="optional"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn" onclick="addEntry(${fIdx})">Add entry</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Price signals chart</div>
+      <div class="legend">
+        <span class="legend-item"><span class="legend-line" style="border-top:2.5px solid ${f.color};"></span>Upgrade offer</span>
+        <span class="legend-item"><span class="legend-line" style="border-top:2px dashed #D85A30;"></span>Economy fare</span>
+        <span class="legend-item"><span class="legend-line" style="border-top:2px dashed #BA7517;"></span>Full biz fare</span>
+        <span class="legend-item"><span class="legend-line" style="border-top:2px dashed #1D9E75;"></span>Biz seats (right axis)</span>
+      </div>
+      <div style="position:relative;width:100%;height:290px;">
+        <canvas id="${f.chartId}" role="img" aria-label="Line chart showing upgrade offer, economy fare, full business fare, and seat availability over time.">Tracks upgrade offer, fares, and seat count over time.</canvas>
+      </div>
+      <p id="chart-empty-${fIdx}" class="note" style="display:none;">Add data points to see the chart.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Signal analysis</div>
+      <div id="signal-${fIdx}" class="signal-box">Add full business class fare data alongside upgrade offer prices to see divergence signals.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Upgrade price projection</div>
+      <div id="projection-${fIdx}" style="font-size:13px;color:var(--text2);line-height:1.7;">Add at least 3 upgrade offer data points to generate a projection.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Data log</div>
+      <div style="overflow-x:auto;">
+        <p id="no-data-${fIdx}" class="empty-msg">No entries yet.</p>
+        <table id="table-${fIdx}" style="display:none;">
+          <thead><tr>
+            <th>Date</th><th>Days out</th><th>Econ</th><th>Full biz</th><th>Biz seats</th><th>Upgrade $</th><th>Notes</th><th></th>
+          </tr></thead>
+          <tbody id="tbody-${fIdx}"></tbody>
+        </table>
+      </div>
+      <div class="btn-row" style="margin-top:14px;">
+        <button class="btn" onclick="exportCSV(${fIdx})">Export CSV</button>
+        <button class="btn-outline" onclick="exportForClaude(${fIdx})">Copy for Claude</button>
+      </div>
+      <p class="note">CSV imports into Excel. "Copy for Claude" formats data as a prompt for analysis in a new conversation.</p>
+    </div>
+  `;
+}
+
+function renderCadence(fIdx) {
+  const container = document.getElementById('cadence-' + fIdx);
+  if (!container) return;
+  const items = getCadence(fIdx);
+  if (!items.length) {
+    container.innerHTML = '<p class="empty-msg">Set a departure date to see recommended check schedule.</p>';
+    return;
+  }
+
+  const priorityColor = { high: '#A32D2D', elevated: '#854F0B', normal: 'var(--text2)', low: 'var(--text3)' };
+
+  const html = `<div class="cadence-grid">` + items.map(item => {
+    const isChecked = item.lastCheck === todayStr();
+    let dueHtml = '';
+    if (item.trigger) {
+      dueHtml = `<div class="cadence-trigger">${item.trigger}</div>`;
+    } else if (item.dueDate) {
+      const label = item.status === 'overdue' ? `overdue (was ${item.dueDate})` : item.status === 'today' ? 'due today' : `next: ${item.dueDate}`;
+      dueHtml = `<div class="cadence-due ${item.status}">${label}</div>`;
+    }
+    const lastHtml = item.lastCheck ? `<div style="font-size:10px;color:var(--text3);margin-top:3px;">Last checked: ${item.lastCheck}</div>` : '';
+
+    return `<div class="cadence-item ${isChecked ? 'checked' : ''}">
+      <div class="cadence-checkbox ${isChecked ? 'checked' : ''}" onclick="checkOff(${fIdx}, '${item.id}')" title="Mark as checked today"></div>
+      <div style="min-width:0;">
+        <div class="cadence-label" style="color:${isChecked ? 'var(--text3)' : priorityColor[item.priority]}">${item.label}</div>
+        <div class="cadence-desc">${item.desc}</div>
+        ${dueHtml}
+        ${lastHtml}
+      </div>
+    </div>`;
+  }).join('') + `</div>
+  <p class="note">Check off each item after completing. Cadence adjusts automatically as departure approaches.</p>`;
+
+  container.innerHTML = html;
+}
+
+function onSetup(fIdx) {
+  state[fIdx].depDate = document.getElementById('dep-date-' + fIdx).value;
+  state[fIdx].flightLabel = document.getElementById('flight-label-' + fIdx).value;
+  state[fIdx].totalBiz = document.getElementById('total-biz-' + fIdx).value;
+  save();
+  render(fIdx);
+  updateTabDots();
+}
+
+function addEntry(fIdx) {
+  const date = document.getElementById('entry-date-' + fIdx).value;
+  const econ = parseFloat(document.getElementById('entry-econ-' + fIdx).value);
+  const bizFare = parseFloat(document.getElementById('entry-bizfare-' + fIdx).value);
+  const bizSeats = parseInt(document.getElementById('entry-biz-seats-' + fIdx).value);
+  const upgrade = parseFloat(document.getElementById('entry-upgrade-' + fIdx).value);
+  const notes = document.getElementById('entry-notes-' + fIdx).value.trim();
+
+  if (!date) { alert('Please enter a date.'); return; }
+  if ([econ, bizFare, bizSeats, upgrade].every(isNaN)) { alert('Please enter at least one data value.'); return; }
+
+  const entry = {
+    date,
+    econ: isNaN(econ) ? null : econ,
+    bizFare: isNaN(bizFare) ? null : bizFare,
+    bizSeats: isNaN(bizSeats) ? null : bizSeats,
+    upgrade: isNaN(upgrade) ? null : upgrade,
+    notes
+  };
+
+  const idx = state[fIdx].entries.findIndex(e => e.date === date);
+  if (idx >= 0) state[fIdx].entries[idx] = entry;
+  else state[fIdx].entries.push(entry);
+  state[fIdx].entries.sort((a, b) => a.date.localeCompare(b.date));
+
+  ['entry-econ-','entry-bizfare-','entry-biz-seats-','entry-upgrade-','entry-notes-'].forEach(id => {
+    document.getElementById(id + fIdx).value = '';
+  });
+
+  save();
+  render(fIdx);
+  updateTabDots();
+}
+
+function deleteEntry(fIdx, date) {
+  if (!confirm('Delete entry for ' + date + '?')) return;
+  state[fIdx].entries = state[fIdx].entries.filter(e => e.date !== date);
+  save();
+  render(fIdx);
+}
+
+function render(fIdx) {
+  const s = state[fIdx];
+  const entries = s.entries;
+  const depDate = s.depDate;
+  const days = daysUntil(depDate);
+
+  document.getElementById('stat-days-' + fIdx).textContent = days !== null ? days : '—';
+  const last = entries.length > 0 ? entries[entries.length - 1] : null;
+  document.getElementById('stat-upgrade-' + fIdx).textContent = last && last.upgrade !== null ? '$' + last.upgrade : '—';
+  document.getElementById('stat-bizfare-' + fIdx).textContent = last && last.bizFare !== null ? '$' + last.bizFare : '—';
+  document.getElementById('stat-seats-' + fIdx).textContent = last && last.bizSeats !== null ? last.bizSeats : '—';
+
+  const firstU = entries.find(e => e.upgrade !== null);
+  const lastU = [...entries].reverse().find(e => e.upgrade !== null);
+  const changeEl = document.getElementById('stat-change-' + fIdx);
+  if (firstU && lastU && firstU !== lastU) {
+    const change = lastU.upgrade - firstU.upgrade;
+    changeEl.textContent = (change <= 0 ? '' : '+') + '$' + Math.round(change);
+    changeEl.style.color = change <= 0 ? '#3B6D11' : '#A32D2D';
+  } else {
+    changeEl.textContent = '—';
+    changeEl.style.color = 'var(--text)';
+  }
+
+  renderCadence(fIdx);
+  renderTable(fIdx, depDate);
+  renderChart(fIdx, depDate);
+  renderSignal(fIdx);
+  renderProjection(fIdx, depDate);
+}
+
+function renderTable(fIdx, depDate) {
+  const entries = state[fIdx].entries;
+  const msg = document.getElementById('no-data-' + fIdx);
+  const table = document.getElementById('table-' + fIdx);
+  const tbody = document.getElementById('tbody-' + fIdx);
+  if (!msg || !table) return;
+  if (entries.length === 0) { msg.style.display = 'block'; table.style.display = 'none'; return; }
+  msg.style.display = 'none'; table.style.display = 'table';
+  tbody.innerHTML = [...entries].reverse().map(e => {
+    const d = daysOut(e.date, depDate);
+    return `<tr>
+      <td>${e.date}</td><td>${d !== null ? d : '—'}</td>
+      <td>${e.econ !== null ? '$'+e.econ : '—'}</td>
+      <td>${e.bizFare !== null ? '$'+e.bizFare : '—'}</td>
+      <td>${e.bizSeats !== null ? e.bizSeats : '—'}</td>
+      <td>${e.upgrade !== null ? '$'+e.upgrade : '—'}</td>
+      <td style="color:var(--text2);max-width:130px;">${e.notes||''}</td>
+      <td><button class="del-btn" onclick="deleteEntry(${fIdx},'${e.date}')" title="Delete">×</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderChart(fIdx, depDate) {
+  const entries = state[fIdx].entries;
+  const f = FLIGHTS[fIdx];
+  const ctx = document.getElementById(f.chartId);
+  const emptyMsg = document.getElementById('chart-empty-' + fIdx);
+  if (!ctx) return;
+  if (entries.length === 0) {
+    if (charts[fIdx]) { charts[fIdx].destroy(); charts[fIdx] = null; }
+    ctx.style.display = 'none'; if (emptyMsg) emptyMsg.style.display = 'block'; return;
+  }
+  ctx.style.display = 'block'; if (emptyMsg) emptyMsg.style.display = 'none';
+  const labels = entries.map(e => { const d = daysOut(e.date, depDate); return d !== null ? d+'d' : e.date; });
+  if (charts[fIdx]) charts[fIdx].destroy();
+  charts[fIdx] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Upgrade offer', data: entries.map(e => e.upgrade), borderColor: f.color, backgroundColor: 'transparent', borderWidth: 2.5, pointRadius: 5, pointBackgroundColor: f.color, tension: 0.3, yAxisID: 'y', spanGaps: true },
+        { label: 'Economy fare', data: entries.map(e => e.econ), borderColor: '#D85A30', backgroundColor: 'transparent', borderWidth: 1.5, pointRadius: 3, pointBackgroundColor: '#D85A30', borderDash: [5,3], tension: 0.3, yAxisID: 'y', spanGaps: true },
+        { label: 'Full biz fare', data: entries.map(e => e.bizFare), borderColor: '#BA7517', backgroundColor: 'transparent', borderWidth: 1.5, pointRadius: 3, pointBackgroundColor: '#BA7517', borderDash: [3,2], tension: 0.3, yAxisID: 'y', spanGaps: true },
+        { label: 'Biz seats', data: entries.map(e => e.bizSeats), borderColor: '#1D9E75', backgroundColor: 'transparent', borderWidth: 1.5, pointRadius: 3, pointBackgroundColor: '#1D9E75', borderDash: [7,4], tension: 0.2, yAxisID: 'y2', spanGaps: true }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => { const v = ctx.parsed.y; if (v == null) return null; return ctx.dataset.label === 'Biz seats' ? `Biz seats: ${v}` : `${ctx.dataset.label}: $${v}`; } } }
+      },
+      scales: {
+        x: { ticks: { color: '#888780', font: { size: 11 }, autoSkip: true, maxRotation: 45 }, grid: { color: 'rgba(136,135,128,0.08)' } },
+        y: { ticks: { color: '#888780', font: { size: 11 }, callback: v => '$'+v }, grid: { color: 'rgba(136,135,128,0.08)' }, title: { display: true, text: 'Price ($)', color: '#888780', font: { size: 11 } } },
+        y2: { position: 'right', ticks: { color: '#1D9E75', font: { size: 11 }, stepSize: 1 }, grid: { display: false }, title: { display: true, text: 'Seats', color: '#1D9E75', font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+function renderSignal(fIdx) {
+  const entries = state[fIdx].entries;
+  const div = document.getElementById('signal-' + fIdx);
+  if (!div) return;
+  const bizFareEntries = entries.filter(e => e.bizFare !== null);
+  const upgradeEntries = entries.filter(e => e.upgrade !== null);
+  if (bizFareEntries.length < 2 || upgradeEntries.length < 2) {
+    div.textContent = 'Add full business class fare data alongside upgrade offer prices to see divergence signals.'; return;
+  }
+  const firstBiz = bizFareEntries[0].bizFare, lastBiz = bizFareEntries[bizFareEntries.length-1].bizFare;
+  const firstUpgrade = upgradeEntries[0].upgrade, lastUpgrade = upgradeEntries[upgradeEntries.length-1].upgrade;
+  const bizChange = lastBiz - firstBiz, upgradeChange = lastUpgrade - firstUpgrade;
+  const lastE = entries[entries.length-1];
+  const impliedFloor = (lastE && lastE.bizFare !== null) ? Math.round(lastE.bizFare * 0.20) : null;
+  let html = '<div style="line-height:1.8;">';
+  if (bizChange < -20 && upgradeChange < -10) html += `<strong>Both signals dropping.</strong> Full biz fare down $${Math.abs(Math.round(bizChange))}, upgrade offer down $${Math.abs(Math.round(upgradeChange))}. Demand genuinely soft — supports waiting for a larger discount.`;
+  else if (bizChange > 10 && upgradeChange < -10) html += `<strong>Divergence detected.</strong> Full biz fares rising (+$${Math.round(bizChange)}) while upgrade offer falls (-$${Math.abs(Math.round(upgradeChange))}). Airline may be protecting full-fare revenue while discounting upgrades quietly. Offer likely has more room to drop.`;
+  else if (Math.abs(bizChange) < 15 && upgradeChange < -10) html += `<strong>Upgrade drifting, full fares stable.</strong> Consistent with broadcast algorithmic discounting on an unsold cabin. Fare basis likely adjusting independently of demand.`;
+  else if (bizChange < -20 && Math.abs(upgradeChange) < 15) html += `<strong>Full fares dropping faster than upgrade offer.</strong> Gap between full fare and upgrade offer may be narrowing — worth checking whether buying outright approaches the upgrade cost.`;
+  else html += `<strong>No strong divergence yet.</strong> Biz fare ${bizChange >= 0 ? 'up' : 'down'} $${Math.abs(Math.round(bizChange))}, upgrade offer ${upgradeChange >= 0 ? 'up' : 'down'} $${Math.abs(Math.round(upgradeChange))}. Signal typically strengthens inside 14 days.`;
+  if (impliedFloor !== null) html += `<br><span style="color:var(--text3);font-size:12px;">Implied floor: ~$${impliedFloor} (20% of current full biz fare of $${lastE.bizFare}). Rough heuristic only.</span>`;
+  html += '</div>';
+  div.innerHTML = html;
+}
+
+function renderProjection(fIdx, depDate) {
+  const entries = state[fIdx].entries;
+  const div = document.getElementById('projection-' + fIdx);
+  if (!div) return;
+  const upgradeEntries = entries.filter(e => e.upgrade !== null && depDate);
+  if (upgradeEntries.length < 3) { div.textContent = 'Add at least 3 data points with upgrade offer prices to generate a projection.'; return; }
+  const points = upgradeEntries.map(e => ({ x: daysOut(e.date, depDate), y: e.upgrade })).filter(p => p.x !== null);
+  const n = points.length;
+  const sumX = points.reduce((s,p)=>s+p.x,0), sumY = points.reduce((s,p)=>s+p.y,0);
+  const sumXY = points.reduce((s,p)=>s+p.x*p.y,0), sumX2 = points.reduce((s,p)=>s+p.x*p.x,0);
+  const slope = (n*sumXY - sumX*sumY)/(n*sumX2 - sumX*sumX);
+  const intercept = (sumY - slope*sumX)/n;
+  const proj = x => Math.max(0, Math.round(slope*x+intercept));
+  const weeklyDrop = Math.abs(Math.round(slope*7));
+  const daysTracked = points[0].x - points[n-1].x;
+  const seatsEl = [...entries].reverse().find(e => e.bizSeats !== null);
+  const totalBiz = parseInt(state[fIdx].totalBiz) || 16;
+  const seatsLeft = seatsEl ? seatsEl.bizSeats : null;
+  let html = `<div style="font-size:13px;line-height:1.8;">`;
+  html += `<p style="margin-bottom:10px;color:var(--text2);">Based on <strong style="color:var(--text)">${n} points</strong> over <strong style="color:var(--text)">${daysTracked} days</strong>: moving <strong style="color:var(--text)">${slope>0?'up':'down'} ~$${weeklyDrop}/week</strong>. `;
+  html += weeklyDrop < 8 ? 'Minimal movement — algorithm not actively discounting yet.' : 'Consistent directional pressure.';
+  html += `</p><div class="proj-grid">`;
+  [[14,'14d out'],[7,'7d out'],[3,'3d out'],[0,'at gate']].forEach(([d,l]) => {
+    const val = proj(d);
+    const cls = val < 250 ? 'badge-green' : val < 300 ? 'badge-amber' : 'badge-red';
+    html += `<div class="proj-cell"><div class="proj-cell-label">${l}</div><span class="badge ${cls}">$${val}</span></div>`;
+  });
+  html += `</div>`;
+  if (seatsLeft !== null) {
+    const pct = Math.round(((totalBiz-seatsLeft)/totalBiz)*100);
+    const msg = seatsLeft >= 10 ? 'Very soft — discount pressure should increase.' : seatsLeft >= 6 ? 'Moderately soft.' : 'Tightening — risk of offer disappearing.';
+    html += `<p style="font-size:12px;color:var(--text2);margin-top:4px;">Cabin ${pct}% filled (${seatsLeft} of ${totalBiz} remain). ${msg}</p>`;
+  }
+  html += `<p class="note">Linear regression on logged data. Does not account for discontinuous events.</p></div>`;
+  div.innerHTML = html;
+}
+
+function exportCSV(fIdx) {
+  const s = state[fIdx];
+  const flight = s.flightLabel || FLIGHTS[fIdx].label;
+  let csv = 'Date,Days to departure,Economy fare,Full biz fare,Business seats available,Upgrade offer,Notes\n';
+  s.entries.forEach(e => {
+    const d = daysOut(e.date, s.depDate);
+    csv += `${e.date},${d??''},${e.econ??''},${e.bizFare??''},${e.bizSeats??''},${e.upgrade??''},"${(e.notes||'').replace(/"/g,'""')}"\n`;
+  });
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${flight.replace(/\s+/g,'_')}_upgrade_tracker.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportForClaude(fIdx) {
+  const s = state[fIdx];
+  const flight = s.flightLabel || FLIGHTS[fIdx].label;
+  let text = `Flight upgrade tracking data — ${flight}\nDeparture: ${s.depDate}. Total business class seats: ${s.totalBiz||'?'}.\n\n`;
+  text += `Date | Days out | Economy fare | Full biz fare | Biz seats | Upgrade offer | Notes\n`;
+  text += `-----|----------|--------------|---------------|-----------|---------------|------\n`;
+  s.entries.forEach(e => {
+    const d = daysOut(e.date, s.depDate);
+    text += `${e.date} | ${d??'—'} | ${e.econ!==null?'$'+e.econ:'n/a'} | ${e.bizFare!==null?'$'+e.bizFare:'n/a'} | ${e.bizSeats!==null?e.bizSeats:'n/a'} | ${e.upgrade!==null?'$'+e.upgrade:'n/a'} | ${e.notes||''}\n`;
+  });
+  text += `\nPlease analyze this upgrade pricing data. What does the relationship between the full business class fare and the upgrade offer tell us about airline pricing strategy? What is the likely floor price and optimal window to purchase?`;
+  navigator.clipboard.writeText(text).then(() => alert('Copied. Paste into a new Claude conversation for analysis.')).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    alert('Copied to clipboard.');
+  });
+}
+
+FLIGHTS.forEach(f => buildPane(f.id));
+FLIGHTS.forEach(f => render(f.id));
+updateTabDots();
+</script>
+</body>
+</html>
